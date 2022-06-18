@@ -37,8 +37,9 @@ int main() {
     auto qRgb = device.getOutputQueue("rgb", 30, false);
     auto qJpeg = device.getOutputQueue("jpeg", 30, true);
 
-    std::string dirName = "rgb_data";
-    createDirectory(dirName);
+    std::string dirName = "/home/amaity/Desktop/TestImages";
+    // createDirectory(dirName);  // Assume the directory exists
+    unsigned int frameCnt = 0;
 
     while(true) {
         auto inRgb = qRgb->tryGet<dai::ImgFrame>();
@@ -48,9 +49,9 @@ int main() {
 
         auto encFrames = qJpeg->tryGetAll<dai::ImgFrame>();
         for(const auto& encFrame : encFrames) {
-            uint64_t time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+            // uint64_t time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
             std::stringstream videoStr;
-            videoStr << dirName << "/" << time << ".jpeg";
+            videoStr << dirName << "/" << frameCnt++ << ".jpeg";
             auto videoFile = std::ofstream(videoStr.str(), std::ios::binary);
             videoFile.write((char*)encFrame->getData().data(), encFrame->getData().size());
         }

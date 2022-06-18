@@ -27,19 +27,20 @@ int main() {
     // Create pipeline
     dai::Pipeline pipeline;
     std::vector<std::string> queueNames;
+    std::unordered_map<std::string, unsigned> frameCntMap;
+    std::string dirName = "/home/amaity/Desktop/TestImages";
 
     // Define sources and outputs
     auto camRgb = pipeline.create<dai::node::ColorCamera>();
     auto left = pipeline.create<dai::node::MonoCamera>();
     auto right = pipeline.create<dai::node::MonoCamera>();
     auto stereo = pipeline.create<dai::node::StereoDepth>();
+    auto xJpegRgb = pipeline.create<dai::node::XLinkOut>();
+    auto xJpeqDis = pipeline.create<dai::node::XLinkOut>();
 
-    auto rgbOut = pipeline.create<dai::node::XLinkOut>();
-    auto depthOut = pipeline.create<dai::node::XLinkOut>();
-
-    rgbOut->setStreamName("rgb");
+    xJpegRgb->setStreamName("rgb");
     queueNames.push_back("rgb");
-    depthOut->setStreamName("depth");
+    xJpeqDis->setStreamName("depth");
     queueNames.push_back("depth");
 
     // Properties
@@ -64,10 +65,10 @@ int main() {
     stereo->setDepthAlign(dai::CameraBoardSocket::RGB);
 
     // Linking
-    camRgb->isp.link(rgbOut->input);
     left->out.link(stereo->left);
     right->out.link(stereo->right);
-    stereo->disparity.link(depthOut->input);
+    camRgb->isp.link(xJpegRgb->input);
+    stereo->disparity.link(xJpeqDis->input);
 
     // Connect to device and start pipeline
     dai::Device device(pipeline);
@@ -75,6 +76,7 @@ int main() {
     // Sets queues size and behavior
     for(const auto& name : queueNames) {
         device.getOutputQueue(name, 4, false);
+        frameCntMap[name] = 0;
     }
 
     std::unordered_map<std::string, cv::Mat> frame;
@@ -102,36 +104,19 @@ int main() {
 
         for(const auto& name : queueNames) {
             if(latestPacket.find(name) != latestPacket.end()) {
-                if(name == depthWindowName) {
-                    frame[name] = latestPacket[name]->getFrame();
+                if (name == "depth") {
                     auto maxDisparity = stereo->initialConfig.getMaxDisparity();
-                    // Optional, extend range 0..95 -> 0..255, for a better visualisation
-                    if(1) frame[name].convertTo(frame[name], CV_8UC1, 255. / maxDisparity);
-                    // Optional, apply false colorization
-                    if(1) cv::applyColorMap(frame[name], frame[name], cv::COLORMAP_HOT);
-                } else {
+                    frame[name] = latestPacket[name]->getFrame();
+                    frame[name].convertTo(frame[name], CV_8UC1, 255. / maxDisparity);
+                } else 
                     frame[name] = latestPacket[name]->getCvFrame();
-                }
 
-                cv::imshow(name, frame[name]);
+                std::stringstream videoStr;
+
+                videoStr << dirName << "/" << name << "_" << frameCntMap[name]++ << ".jpeg";
+                cv::imwrite(videoStr.str(),frame[name]);
+
             }
-        }
-
-        // Blend when both received
-        if(frame.find(rgbWindowName) != frame.end() && frame.find(depthWindowName) != frame.end()) {
-            // Need to have both frames in BGR format before blending
-            if(frame[depthWindowName].channels() < 3) {
-                cv::cvtColor(frame[depthWindowName], frame[depthWindowName], cv::COLOR_GRAY2BGR);
-            }
-            cv::Mat blended;
-            cv::addWeighted(frame[rgbWindowName], rgbWeight, frame[depthWindowName], depthWeight, 0, blended);
-            cv::imshow(blendedWindowName, blended);
-            frame.clear();
-        }
-
-        int key = cv::waitKey(1);
-        if(key == 'q' || key == 'Q') {
-            return 0;
         }
     }
     return 0;
