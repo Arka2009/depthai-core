@@ -26,6 +26,7 @@ int main() {
 
     // Create pipeline
     dai::Pipeline pipeline;
+    dai::Device device;
     std::vector<std::string> queueNames;
     std::unordered_map<std::string, unsigned> frameCntMap;
     std::string dirName = "/home/amaity/Desktop/TestImages";
@@ -50,7 +51,16 @@ int main() {
     if(downscaleColor) camRgb->setIspScale(2, 3);
     // For now, RGB needs fixed focus to properly align with depth.
     // This value was used during calibration
-    camRgb->initialControl.setManualFocus(135);
+    try {
+        auto calibData = device.readCalibration2();
+        auto lensPosition = calibData.getLensPosition(dai::CameraBoardSocket::RGB);
+        if(lensPosition) {
+            camRgb->initialControl.setManualFocus(lensPosition);
+        }
+    } catch(const std::exception& ex) {
+        std::cout << ex.what() << std::endl;
+        return 1;
+    }
 
     left->setResolution(monoRes);
     left->setBoardSocket(dai::CameraBoardSocket::LEFT);
@@ -71,7 +81,7 @@ int main() {
     stereo->disparity.link(xJpeqDis->input);
 
     // Connect to device and start pipeline
-    dai::Device device(pipeline);
+    device.startPipeline(pipeline);
 
     // Sets queues size and behavior
     for(const auto& name : queueNames) {
